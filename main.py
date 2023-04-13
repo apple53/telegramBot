@@ -180,7 +180,7 @@ async def response(callback: types.CallbackQuery, state: FSMContext):
                                                 tic_tac_toe[callback.data.split('-')[1]]["msg_id"][1], reply_markup=kb)
                 else:
                     print(t)
-                    winner = db.get_nickname([id2, id1][t])[0][0]
+                    winner = db.get_nickname([id1, id2][t - 1])[0][0]
                     await bot.edit_message_text(f"Игра окончена, победитель: {winner}", id1, tic_tac_toe[callback.data.split('-')[1]]["msg_id"][0], reply_markup=kb)
                     await bot.edit_message_text(f"Игра окончена, победитель: {winner}", id2, tic_tac_toe[callback.data.split('-')[1]]["msg_id"][1], reply_markup=kb)
         else:
