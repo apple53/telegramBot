@@ -58,8 +58,12 @@ class Databases:
             result1 = ",".join(result2)
             result2 = ",".join(result1)
             self.cursor.execute("UPDATE players set friends = ? WHERE user_id = ?", (result1, int(user_id1),))
-            self.cursor.execute("UPDATE players set friends = ? WHERE user_id = ?", (result2, int(user_id2,)))
+            self.cursor.execute("UPDATE players set friends = ? WHERE user_id = ?", (result2, int(user_id2),))
 
     def delete_all(self):
         with self.connection:
             self.cursor.execute("DELETE FROM 'players'")
+
+    def edit_status(self, user_id, new):
+        with self.connection:
+            self.cursor.execute("UPDATE players set status = ? WHERE user_id = ?", (new, user_id,))

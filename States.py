@@ -8,3 +8,7 @@ class Reg(StatesGroup):
 class Add_friends(StatesGroup):
     nickname = State()
 
+
+class Tic_tac_toe(StatesGroup):
+    game = State()
+

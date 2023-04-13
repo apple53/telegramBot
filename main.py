@@ -17,6 +17,9 @@ bot = Bot(token)
 dp = Dispatcher(bot, storage=storage)
 
 
+tic_tac_toe = {}
+
+
 @dp.message_handler(commands=["отмена"], state="*")
 @dp.message_handler(Text(equals="отмена", ignore_case=True), state="*")
 async def stop(message: types.Message, state: FSMContext):
@@ -109,5 +112,87 @@ async def duel(callback: types.CallbackQuery):
     await callback.answer("Друг удален")
     await bot.delete_message(chat_id=callback.from_user.id, message_id=callback.message.message_id)
 
+
+@dp.callback_query_handler(Text(startswith="tic_tac_toe"))
+async def tic(callback: types.CallbackQuery, state: FSMContext):
+    status1 = db.get_status(callback.from_user.id)
+    status2 = db.get_status(int(callback.data.split('-')[1]))
+    if status1 != "Game" and status2 != "Game":
+        db.edit_status(callback.from_user.id, "Game")
+        await Tic_tac_toe.game.set()
+        tic_tac_toe[str(callback.from_user.id)] = {"status": "wait", "players": [callback.from_user.id],
+                                                  "board": [[0, 0, 0] for i in range(3)], "move": 0, "msg_id": [1, 1]}
+        await bot.send_message(int(callback.data.split('-')[1]), f"Вызов в крестики-нолики от {db.get_nickname(callback.from_user.id)[0][0]}",
+                               reply_markup=tic_tac_toe_kb(callback.from_user.id))
+        async with state.proxy() as data:
+            data["game"] = str(callback.from_user.id)
+    else:
+        await bot.send_message(callback.from_user.id, "Игрок уже в игре")
+    await bot.delete_message(chat_id=callback.from_user.id, message_id=callback.message.message_id)
+
+
+@dp.callback_query_handler(Text(startswith="tic_response"))
+async def rsp(callback: types.CallbackQuery, state: FSMContext):
+    if callback.data.split('-')[1] == "true":
+        status1 = db.get_status(callback.from_user.id)
+        if status1 != "Game":
+            db.edit_status(callback.from_user.id, "Game")
+            await Tic_tac_toe.game.set()
+            tic_tac_toe[callback.data.split('-')[2]]["status"] = "game"
+            x = tic_tac_toe[callback.data.split('-')[2]]["players"]
+            x.append(callback.from_user.id)
+            tic_tac_toe[callback.data.split('-')[2]]["players"] = x
+            msg1 = await bot.send_message(tic_tac_toe[callback.data.split('-')[2]]["players"][0], "Игра началась",
+                                          reply_markup=tic_tac_toe_board(tic_tac_toe[callback.data.split('-')[2]]["board"],
+                                                                  callback.data.split('-')[2]))
+            msg2 = await bot.send_message(callback.from_user.id, "Игра началась",
+                                          reply_markup=tic_tac_toe_board(tic_tac_toe[callback.data.split('-')[2]]["board"],
+                                                                  callback.data.split('-')[2]))
+            tic_tac_toe[callback.data.split('-')[2]]["msg_id"] = [msg1.message_id, msg2.message_id]
+            await bot.delete_message(chat_id=callback.from_user.id, message_id=callback.message.message_id)
+            async with state.proxy() as data:
+                data["game"] = str([callback.data.split('-')[1]])
+
+
+@dp.callback_query_handler(Text(startswith="tic_game"), state=Tic_tac_toe.game)
+async def response(callback: types.CallbackQuery, state: FSMContext):
+    move = tic_tac_toe[callback.data.split('-')[1]]["move"]
+    if tic_tac_toe[callback.data.split('-')[1]]["players"][move] == callback.from_user.id:
+        x = int(callback.data.split('-')[2])
+        y = int(callback.data.split('-')[3])
+        if tic_tac_toe[callback.data.split('-')[1]]["board"][x][y] == 0:
+            tic_tac_toe[callback.data.split('-')[1]]["board"][x][y] = move + 1
+            tic_tac_toe[callback.data.split('-')[1]]["move"] = (move + 1) % 2
+            t = check(tic_tac_toe[callback.data.split('-')[1]]["board"])
+            id1 = tic_tac_toe[callback.data.split('-')[1]]["players"][0]
+            id2 = tic_tac_toe[callback.data.split('-')[1]]["players"][1]
+            if not t:
+                await bot.edit_message_text("Игра началась:", id1, tic_tac_toe[callback.data.split('-')[1]]["msg_id"][0],
+                                            reply_markup=tic_tac_toe_board(tic_tac_toe[callback.data.split('-')[1]]["board"], id1))
+                await bot.edit_message_text("Игра началась:", id2, tic_tac_toe[callback.data.split('-')[1]]["msg_id"][1],
+                                            reply_markup=tic_tac_toe_board(tic_tac_toe[callback.data.split('-')[1]]["board"], id1))
+            else:
+                kb = exit_kb()
+                if t == -1:
+                    await bot.edit_message_text(f"Игра окончена, ничья", id1,
+                                                tic_tac_toe[callback.data.split('-')[1]]["msg_id"][0], reply_markup=kb)
+                    await bot.edit_message_text(f"Игра окончена, ничья", id2,
+                                                tic_tac_toe[callback.data.split('-')[1]]["msg_id"][1], reply_markup=kb)
+                else:
+                    print(t)
+                    winner = db.get_nickname([id2, id1][t])[0][0]
+                    await bot.edit_message_text(f"Игра окончена, победитель: {winner}", id1, tic_tac_toe[callback.data.split('-')[1]]["msg_id"][0], reply_markup=kb)
+                    await bot.edit_message_text(f"Игра окончена, победитель: {winner}", id2, tic_tac_toe[callback.data.split('-')[1]]["msg_id"][1], reply_markup=kb)
+        else:
+            await callback.answer("Вы не можете ходить сюда")
+    else:
+        await callback.answer("Сейчас не ваш ход")
+
+
+@dp.callback_query_handler(Text(startswith="exit"), state=Tic_tac_toe.game)
+async def exit(callback: types.CallbackQuery, state: FSMContext):
+    await bot.delete_message(chat_id=callback.from_user.id, message_id=callback.message.message_id)
+    db.edit_status(callback.from_user.id, "None")
+    await state.finish()
 
 executor.start_polling(dp, skip_updates=True)
